@@ -45,10 +45,10 @@ TeleScore is currently undergoing a full rewrite to fully utilize the flexible P
 
 ## How to build from source
 
-1. Make sure you have Python v3.11.1 installed.
+1. Make sure you have Python v3.10.0 installed.
 2. Using command line, head to the root directory of the project (Not src folder, folder above it)
 3. Create a Python virtual environment by using: `python3 -m venv venv`
-4. Get into the python virtual environment by using: `source venv/bin/activate`
+4. Get into the python virtual environment by using: `source venv/bin/activate` or `venv/Scripts/activate`
 5. Using pip, install the dependencies by using `pip install -r requirements.txt`
 6. If no errors are shown, use `python src/main.py` to build the software
 

@@ -16,8 +16,11 @@ from fileio.projectfile import ProjectFile
 from fileio.startfile import StartFile
 from project import Project
 from progsetting import ProgSetting
+from .nditransmitter import NdiTransmitter
 
-from gm_resources import resourcePath, GMessageBox # Importing my PyInstaller resource manager
+# Importing my PyInstaller resource manager
+from gm_resources import resourcePath, GMessageBox
+
 
 class MainWindow(QtWidgets.QMainWindow):
     """
@@ -26,8 +29,8 @@ class MainWindow(QtWidgets.QMainWindow):
     """
 
     def __init__(self, parent=None):
-        super().__init__(parent) # Call the inherited classes __init__ method
-        
+        super().__init__(parent)  # Call the inherited classes __init__ method
+
         ProgSetting().loadProperties("required/data.json")
         StartFile().load()
         self.project = None
@@ -35,18 +38,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor = None
         self._initUI()
         self.dialogs = []
-
+        self.activeNDI = False
 
     def _initUI(self):
-        path = resourcePath("src/window/ui/mainwindow.ui") # replaced complicated path logic with resourcePath()
-        uic.loadUi(path, self) # Load the .ui file
+        # replaced complicated path logic with resourcePath()
+        path = resourcePath("src/window/ui/mainwindow.ui")
+        uic.loadUi(path, self)  # Load the .ui file
         self.setWindowTitle("TeleScore")
-        self.setWindowIcon(QIcon(resourcePath("src/resources/icon.ico"))) # Using a slightly modified version of my PyInstaller Resource system. Also seen on line 18. Basically uses working directory OR temp directory for absolute paths to files.
-        self.show() # Show the GUI
+        # Using a slightly modified version of my PyInstaller Resource system. Also seen on line 18. Basically uses working directory OR temp directory for absolute paths to files.
+        self.setWindowIcon(QIcon(resourcePath("src/resources/icon.ico")))
+        self.show()  # Show the GUI
 
         # Setting up the toolbar
         self.toolBar.addWidget(QtWidgets.QPushButton(QIcon(resourcePath("src/resources/icon.ico")),
-         " TeleScore v1.0.2 Beta"))
+                                                     " TeleScore v1.0.3 Alpha"))
         self.toolBar.addSeparator()
         self.editModeButton = QtWidgets.QPushButton("Editor Mode")
         self.toolBar.addWidget(self.editModeButton)
@@ -59,6 +64,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.toolBar.addWidget(self.popOutButton)
         self.popOutButton.setEnabled(False)
         self.popOutButton.clicked.connect(self._popOutClicked)
+
+        self.ndiButton = QtWidgets.QPushButton("Start NDI")
+        self.toolBar.addWidget(self.ndiButton)
+        self.ndiButton.setEnabled(True)
+        self.ndiButton.clicked.connect(self._ndiButtonClicked)
 
         self.actionSaveAs.triggered.connect(self._saveAsTriggered)
         self.actionOpen.triggered.connect(self._openTriggered)
@@ -78,7 +88,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(self.startMenu)
         self._windowChanged()
 
-
     def _newTriggered(self):
         self._removeAllDialog()
         self.editor = Editor()
@@ -94,22 +103,20 @@ class MainWindow(QtWidgets.QMainWindow):
             self.editModeButton.setEnabled(False)
         self.actionProjSet.setEnabled(True)
 
-
     def _saveTriggered(self):
         if (self.editor != None):
             self.editor.saveAction()
-
 
     def _saveAsTriggered(self):
         if (self.editor != None):
             self.editor.saveAsAction()
 
-
     def _openTriggered(self, action, fileName=None):
         self._removeAllDialog()
 
         if (fileName == None or fileName == ""):
-            self.fileName = QtWidgets.QFileDialog.getOpenFileName(self, "Open Project File", ".", "JSON File (*.json)")
+            self.fileName = QtWidgets.QFileDialog.getOpenFileName(
+                self, "Open Project File", ".", "JSON File (*.json)")
         else:
             self.fileName = [fileName, "JSON File (*.json)"]
 
@@ -143,40 +150,36 @@ class MainWindow(QtWidgets.QMainWindow):
 
             except Exception as ex:
                 GMessageBox("Project File Load Error",
-                 f"This file may be corrupted or not a valid project file.\nPlease try again.\n{ex}",
-                  "Info", self).exec()
+                            f"This file may be corrupted or not a valid project file.\nPlease try again.\n{ex}",
+                            "Info", self).exec()
 
                 self.toolBar.setVisible(False)
                 try:
                     self.setCentralWidget(self.startMenu)
                 except RuntimeError:
-                    self.startMenu = StartMenu(self._newTriggered, self._openTriggered)
+                    self.startMenu = StartMenu(
+                        self._newTriggered, self._openTriggered)
                     self.setCentralWidget(self.startMenu)
-
 
     def _settingsTriggered(self):
         settings = Settings(ProgSetting().getProperties(), self)
-        if  (settings.exec() == settings.DialogCode.Accepted):
+        if (settings.exec() == settings.DialogCode.Accepted):
             self._windowChanged()
             ProgSetting().saveProperties("required/data.json")
-
 
     def _projSettingsTriggered(self):
         settings = Settings(self.editor.getProject().getProperty(), self)
         if (settings.exec() == settings.DialogCode.Accepted):
             self.editor.getProject().saveProperties()
 
-
     def _aboutTriggered(self):
         About(self).exec()
-
 
     def _enablePopOutButton(self):
         if (self.tabWidget.count() > 0):
             self.popOutButton.setEnabled(True)
         else:
             self.popOutButton.setEnabled(False)
-
 
     def _editModeClicked(self):
         self._removeAllDialog()
@@ -191,13 +194,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.actionProjSet.setEnabled(True)
         self.setCentralWidget(self.editor)
 
-    
     def _createNewDialog(self, tab):
         dialog = TabDialog(tab, self._popOutTabClosed, None)
         dialog.setWindowTitle(tab.objectName())
         dialog.show()
         self.dialogs.append(dialog)
-
 
     def _removeAllDialog(self):
         if (self.editor != None):
@@ -206,7 +207,6 @@ class MainWindow(QtWidgets.QMainWindow):
             dialog.deleteLater()
         self.dialogs = []
 
-    
     def _popOutClicked(self):
         tab = self.tabWidget.currentWidget()
 
@@ -217,12 +217,27 @@ class MainWindow(QtWidgets.QMainWindow):
         if (self.tabWidget.count() == 0):
             self.popOutButton.setEnabled(False)
 
+    def _ndiButtonClicked(self):
+        tab = self.tabWidget.currentWidget()
+
+        if not self.activeNDI:
+            # Set the fixed size here
+            # Replace 800, 600 with the desired dimensions
+            tab.setFixedSize(800, 600)
+            self.ndi = NdiTransmitter(tab)
+            self.activeNDI = True
+            self.ndiButton.setText("Stop NDI")
+        else:
+            # Restore dynamic sizing here
+            tab.setMinimumSize(0, 0)  # Remove the minimum size
+            self.activeNDI = False
+            self.ndi.stop()
+            self.ndiButton.setText("Start NDI")
 
     def _popOutTabClosed(self, tab):
         self.tabWidget.addTab(tab.getTab(), tab.getTab().objectName())
         self._enablePopOutButton()
         self.dialogs.remove(tab)
-
 
     def closeEvent(self, evt) -> None:
         StartFile().save()
@@ -236,7 +251,7 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             evt.ignore()
 
-
     def _windowChanged(self):
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, ProgSetting().getProperties()["Always On Top"])
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint,
+                           ProgSetting().getProperties()["Always On Top"])
         self.show()

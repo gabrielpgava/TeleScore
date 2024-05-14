@@ -24,18 +24,20 @@ from fileio.projectfile import ProjectFile
 from attr import CompType
 from window.tabdialog import TabDialog
 from progsetting import ProgSetting
+from .nditransmitter import NdiTransmitter
 
 
 class Editor(QMainWindow):
-    def __init__(self, project: Project=None, parent=None):
-        super().__init__(parent) # Call the inherited classes __init__ method
+    def __init__(self, project: Project = None, parent=None):
+        super().__init__(parent)  # Call the inherited classes __init__ method
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.cmdStack = QtGui.QUndoStack(self) # Command stack used for undo/redo
+        # Command stack used for undo/redo
+        self.cmdStack = QtGui.QUndoStack(self)
         self.currComp = None
         self.currLO = None
         self.tabs = []
         self._initUI(project)
-
+        self.activeNDI = False
 
     def _loadProject(self, project: Project):
         """
@@ -56,7 +58,6 @@ class Editor(QMainWindow):
                 comp.compClicked.connect(self._compClicked)
             tab.LOClicked.connect(self._compClicked)
 
-
     def _initUI(self, project) -> None:
         """
         Initializes the editor UI.
@@ -64,18 +65,20 @@ class Editor(QMainWindow):
         :param: none
         :return: none
         """
-        uic.loadUi(resourcePath("src/window/ui/editor.ui"), self) # Load the .ui file
+        uic.loadUi(resourcePath("src/window/ui/editor.ui"),
+                   self)  # Load the .ui file
 
         if project is None:
             self.project = Project()
-            tab = InsertLOCmd(self.project, self.tabWidget, self._remCallBack, self._dropSlot)
+            tab = InsertLOCmd(self.project, self.tabWidget,
+                              self._remCallBack, self._dropSlot)
             self.cmdStack.push(tab)
             tab.getLayout().LOClicked.connect(self._compClicked)
         else:
             self._loadProject(project)
 
         self.project.addLORenameCallBack(self._renameCallBack)
-            
+
         self.project.setEditMode(True)
         self.project.setInEditor(True)
 
@@ -96,7 +99,7 @@ class Editor(QMainWindow):
 
         # This is a bit redundant. If there is a simpler way of doing this, please change it.
         self.toolBar.addWidget(QPushButton(QtGui.QIcon(resourcePath("src/resources/icon.ico")),
-         " TeleScore v1.0.2 Beta"))
+                                           " TeleScore v1.0.3 Alpha"))
         self.toolBar.addSeparator()
         self.addTabPushButton = QPushButton("Add Tab")
         self.toolBar.addWidget(self.addTabPushButton)
@@ -124,8 +127,12 @@ class Editor(QMainWindow):
         self.toolBar.addWidget(self.popOutTabPushButton)
         self.popOutTabPushButton.clicked.connect(self._popOutTab)
 
-        self._refreshTabButton()
+        self.ndiButton = QPushButton("Start NDI")
+        self.toolBar.addWidget(self.ndiButton)
+        self.ndiButton.setEnabled(True)
+        self.ndiButton.clicked.connect(self._ndiButtonClicked)
 
+        self._refreshTabButton()
 
     def getProject(self) -> Project:
         """
@@ -135,7 +142,6 @@ class Editor(QMainWindow):
         :return: The project.
         """
         return self.project
-
 
     @pyqtSlot(bool)
     def _viewMode(self, clicked):
@@ -150,7 +156,6 @@ class Editor(QMainWindow):
         self.viewModePushButton.setEnabled(False)
         self.clearCurrComp()
 
-
     @pyqtSlot(bool)
     def _editMode(self, clicked):
         """
@@ -163,39 +168,37 @@ class Editor(QMainWindow):
         self.editModePushButton.setEnabled(False)
         self.viewModePushButton.setEnabled(True)
 
-
     @pyqtSlot(int)
     def _tabClicked(self, index):
         self._compClicked(self.tabWidget.widget(index))
 
-
     @pyqtSlot(bool)
     def _addTab(self, clicked):
-        cmd = InsertLOCmd(self.project, self.tabWidget, self._remCallBack, self._dropSlot)
+        cmd = InsertLOCmd(self.project, self.tabWidget,
+                          self._remCallBack, self._dropSlot)
         self.cmdStack.push(cmd)
-        
+
         self._refreshTabButton()
 
         cmd.getLayout().LOClicked.connect(self._compClicked)
 
-
     @pyqtSlot(bool)
     def _removeTab(self, clicked):
-        msg = GMessageBox("Are you sure?", "Are you sure you want to remove this tab?", "AskYesNo", self)
+        msg = GMessageBox(
+            "Are you sure?", "Are you sure you want to remove this tab?", "AskYesNo", self)
         if (msg.exec() == QMessageBox.StandardButton.Yes):
             self.clearCurrComp()
             self.clearActiveTab()
-            cmd = DeleteLOCmd(self.project, self.tabWidget.currentIndex(), self.tabWidget)
+            cmd = DeleteLOCmd(
+                self.project, self.tabWidget.currentIndex(), self.tabWidget)
             self.cmdStack.push(cmd)
 
             self._refreshTabButton()
-
 
     def _renameCallBack(self, fromName, toName):
         for i in range(self.tabWidget.count()):
             if (self.tabWidget.tabText(i) == fromName):
                 self.tabWidget.setTabText(i, toName)
-
 
     def _popOutTab(self, clicked):
         tab = self.tabWidget.currentWidget()
@@ -210,31 +213,44 @@ class Editor(QMainWindow):
 
         self.tabs.append(newTab)
 
-
     def _popOutTabClosed(self, tab):
         self.clearCurrComp()
         self.tabWidget.addTab(tab.getTab(), tab.getTab().objectName())
         self._refreshTabButton()
         self.tabs.remove(tab)
 
+    def _ndiButtonClicked(self):
+        tab = self.tabWidget.currentWidget()
+
+        if not self.activeNDI:
+            # Set the fixed size here
+            # Replace 800, 600 with the desired dimensions
+            tab.setFixedSize(800, 600)
+            self.ndi = NdiTransmitter(tab)
+            self.activeNDI = True
+            self.ndiButton.setText("Stop NDI")
+        else:
+            # Restore dynamic sizing here
+            tab.setMinimumSize(0, 0)  # Remove the minimum size
+            self.activeNDI = False
+            self.ndi.stop()
+            self.ndiButton.setText("Start NDI")
 
     def removeTabs(self):
         for dialog in self.tabs:
             dialog.deleteLater()
         self.tabs = []
 
-
     def _refreshTabButton(self):
         if (self.tabWidget.count() > 1):
             self.removeTabPushButton.setEnabled(True)
         else:
             self.removeTabPushButton.setEnabled(False)
-    
+
         if (self.tabWidget.count() > 0):
             self.popOutTabPushButton.setEnabled(True)
         else:
             self.popOutTabPushButton.setEnabled(False)
-
 
     @pyqtSlot(object)
     def _compClicked(self, comp: AbstractComp) -> None:
@@ -267,7 +283,6 @@ class Editor(QMainWindow):
 
         self.currComp = comp
 
-
     def clearCurrComp(self):
         if (self.currComp != None):
             self.prop.clearTree()
@@ -277,13 +292,11 @@ class Editor(QMainWindow):
             self.currComp.setFrameShape(QFrame.Shape.NoFrame)
             self.currComp = None
 
-
     def clearActiveTab(self):
         if (self.currLO != None):
             self.acti.clearTable()
             self.currLO.getLayout().actiUpdate.disconnect(self.acti.update)
             self.currLO = None
-
 
     def _dropSlot(self, evt: QtGui.QDropEvent, layout):
         """
@@ -301,12 +314,10 @@ class Editor(QMainWindow):
 
         insert.getComp().compClicked.connect(self._compClicked)
 
-
     def _remCallBack(self, component: AbstractComp):
         if (self.currComp == component):
             self.clearCurrComp()
         component.compClicked.disconnect(self._compClicked)
-
 
     def saveAction(self):
         if (self.project.getFileName() != ""):
@@ -316,9 +327,9 @@ class Editor(QMainWindow):
         else:
             self.saveAsAction()
 
-
     def saveAsAction(self):
-        file = QFileDialog.getSaveFileName(self, "Save Layout File As", ".", "JSON File (*.json)")
+        file = QFileDialog.getSaveFileName(
+            self, "Save Layout File As", ".", "JSON File (*.json)")
 
         if (file[0] != '' and file[1] != ''):
             self.project.setFileName(file[0])
@@ -326,8 +337,8 @@ class Editor(QMainWindow):
             self.project.setDate()
             ProgSetting().addRecentlyOpened(self.project)
 
-
     # Override
+
     def keyPressEvent(self, evt: QtGui.QKeyEvent) -> None:
         '''if (evt.modifiers() & Qt.KeyboardModifier.ControlModifier):
             match evt.key():
@@ -338,7 +349,6 @@ class Editor(QMainWindow):
                 case Qt.Key.Key_S:
                     self.saveAction()
         evt.accept()
-
 
     def closingDialog(self) -> bool:
         dialog = SaveDialog(self)
